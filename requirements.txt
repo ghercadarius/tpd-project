@@ -1,0 +1,41 @@
+# --- Streaming & messaging ---
+apache-flink==1.18.1
+confluent-kafka==2.4.0
+kafka-python==2.0.2
+
+# --- Reddit ingest ---
+praw==7.7.1
+zstandard==0.22.0          # for Pushshift .zst dumps
+
+# --- Model training (GPU) ---
+torch>=2.2.0
+transformers==4.41.2
+datasets==2.19.1
+accelerate==0.30.1
+scikit-learn==1.4.2
+pandas==2.2.2
+pyarrow==16.1.0
+
+# --- Inference (CPU, used inside Flink) ---
+onnx==1.16.1
+onnxruntime==1.18.0
+optimum==1.20.0            # HF -> ONNX export helper
+
+# --- Dashboard ---
+fastapi==0.111.0
+uvicorn[standard]==0.30.1
+streamlit==1.35.0
+sse-starlette==2.1.0
+psycopg[binary]==3.1.19
+SQLAlchemy==2.0.30
+
+# --- Utilities ---
+pydantic==2.7.1
+python-dotenv==1.0.1
+PyYAML==6.0.1
+tqdm==4.66.4
+requests==2.32.3
+
+# --- Testing ---
+pytest==8.2.1
+pytest-asyncio==0.23.7

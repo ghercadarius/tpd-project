@@ -1,0 +1,15 @@
+# Detection thresholds (overridable per brand).
+detection:
+  defaults:
+    window_size_minutes: 5
+    window_slide_minutes: 1
+    out_of_orderness_seconds: 30
+    # Spike: alert when neg_count > mean + k * stdev of EWMA over recent windows.
+    ewma_alpha: 0.3
+    spike_k: 3.0
+    # Guardrails to suppress false positives.
+    min_volume: 25
+    neg_ratio_threshold: 0.45
+    cooldown_minutes: 15
+  per_brand:
+    # acme: { spike_k: 2.5, min_volume: 50 }

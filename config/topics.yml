@@ -1,0 +1,29 @@
+# Declarative Kafka topic definitions. Used by scripts/init_kafka.py.
+# Partition counts are tuned so that key=brand can be distributed across
+# parallel Flink subtasks while still preserving per-key ordering.
+topics:
+  - name: reddit.raw.submissions
+    partitions: 12
+    replication: 1
+    config:
+      retention.ms: "604800000"     # 7 days
+  - name: reddit.raw.comments
+    partitions: 12
+    replication: 1
+    config:
+      retention.ms: "604800000"
+  - name: reddit.scored
+    partitions: 12
+    replication: 1
+    config:
+      retention.ms: "259200000"     # 3 days
+  - name: reddit.aggregates
+    partitions: 6
+    replication: 1
+    config:
+      retention.ms: "2592000000"    # 30 days
+  - name: reddit.alerts
+    partitions: 3
+    replication: 1
+    config:
+      retention.ms: "2592000000"

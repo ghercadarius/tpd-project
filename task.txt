@@ -1,0 +1,29 @@
+The Project’s objective: Create a lightweight real-time pipeline that ingests Reddit
+posts, scores sentiment per message, detects negative spikes for brand/crisis
+signals, and exposes trends and alerts on a dashboard. This solution will help
+in detecting Brand Crisis scenarios from early signs from Reddit.
+The data sources:
+The project will use the the Reddit Pushshift historical collection
+(https://pushshift.io/signup) and the official Reddit API
+(https://www.reddit.com/dev/api/).
+Reddit Pushshift is widely used for research because it provides bulk
+historical data suitable for model training, baseline analysis, and replay.
+The official Reddit API exposes endpoints to read and write posts, comments,
+and metadata in near-real time. It supports authenticated access via OAuth2
+and has endpoints for subreddit streams, comment streams, search, and user
+data (subject to permissions).
+With the historical data we can train and validate models to simulate past
+crises. After we finish the validation stage, we can use the Reddit API to
+search for new Brand Crisis scenarios happening in real time.
+The processing engines used:
+For achieving the solution described above, we will use Apache Kafka and
+Apache Flink.
+Using Kafka, we are able to decouple the producer ( Reddit Pushshift and
+Reddit official API ) from the Flink jobs which consume the comments and
+submissions. Another key aspect behind Kafka is the use of partitions based
+on the subreddit or brand name in the Kafka topics. This allows us to
+parallelize the way Flink consumes the content from Reddit.
+Through Flink we are able to consume events from Kafka and apply per-
+message sentiment scoring, enrichment and windowed aggregations. We are
+also able to implement detection logic for brand crises, having spike detection,
+negative ratio and influencer weighting as stateful operators for instance.

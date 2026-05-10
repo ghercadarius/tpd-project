@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "BrandAlert",
+  "type": "object",
+  "required": ["brand", "triggered_at", "window_start", "window_end", "z_score", "neg_ratio", "volume", "severity"],
+  "properties": {
+    "brand":        { "type": "string" },
+    "triggered_at": { "type": "number" },
+    "window_start": { "type": "number" },
+    "window_end":   { "type": "number" },
+    "z_score":      { "type": "number" },
+    "neg_ratio":    { "type": "number" },
+    "volume":       { "type": "integer" },
+    "severity":     { "type": "string", "enum": ["low", "medium", "high", "critical"] },
+    "sample_text":  { "type": ["string", "null"] }
+  }
+}

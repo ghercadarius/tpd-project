@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RedditRaw",
+  "type": "object",
+  "required": ["id", "type", "subreddit", "brand", "created_utc", "ingested_at"],
+  "properties": {
+    "id":          { "type": "string" },
+    "type":        { "type": "string", "enum": ["submission", "comment"] },
+    "subreddit":   { "type": "string" },
+    "author":      { "type": ["string", "null"] },
+    "brand":       { "type": "string" },
+    "title":       { "type": ["string", "null"] },
+    "body":        { "type": "string" },
+    "permalink":   { "type": ["string", "null"] },
+    "score":       { "type": "integer", "default": 0 },
+    "parent_id":   { "type": ["string", "null"] },
+    "created_utc": { "type": "number", "description": "Event time (epoch seconds)." },
+    "ingested_at": { "type": "number", "description": "Producer wall-clock (epoch seconds)." }
+  }
+}

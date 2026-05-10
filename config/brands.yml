@@ -1,0 +1,17 @@
+# Brands monitored by the pipeline.
+# Each entry's `keywords` are case-insensitively matched against post titles/bodies
+# in the producers; the matched brand becomes the Kafka message key so all records
+# for one brand land on a single partition (preserves stateful operator locality).
+brands:
+  - name: acme
+    keywords: ["acme", "acme corp", "acmecorp"]
+    subreddits: ["all"]
+  - name: globex
+    keywords: ["globex", "globex inc"]
+    subreddits: ["all"]
+  - name: initech
+    keywords: ["initech"]
+    subreddits: ["all"]
+  - name: umbrella
+    keywords: ["umbrella corp", "umbrella corporation"]
+    subreddits: ["all"]

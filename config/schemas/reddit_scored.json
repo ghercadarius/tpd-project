@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RedditScored",
+  "type": "object",
+  "required": ["id", "brand", "created_utc", "label", "neg_prob"],
+  "properties": {
+    "id":          { "type": "string" },
+    "type":        { "type": "string", "enum": ["submission", "comment"] },
+    "subreddit":   { "type": "string" },
+    "author":      { "type": ["string", "null"] },
+    "brand":       { "type": "string" },
+    "text":        { "type": "string" },
+    "permalink":   { "type": ["string", "null"] },
+    "created_utc": { "type": "number" },
+    "label":       { "type": "string", "enum": ["neg", "neu", "pos"] },
+    "neg_prob":    { "type": "number", "minimum": 0, "maximum": 1 },
+    "score":       { "type": "integer" }
+  }
+}

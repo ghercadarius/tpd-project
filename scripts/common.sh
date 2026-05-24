@@ -15,12 +15,6 @@ resolve_python() {
     return 0
   fi
 
-  # Prefer python 3.10 on systems where it's installed
-  if command -v python3.10 >/dev/null 2>&1; then
-    command -v python3.10
-    return 0
-  fi
-
   # Fall back to python3 then python
   if command -v python3 >/dev/null 2>&1; then
     command -v python3

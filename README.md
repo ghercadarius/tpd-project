@@ -24,33 +24,36 @@ a Streamlit/FastAPI dashboard.
 
 See [docs/architecture.md](docs/architecture.md) for the full design.
 
-## Quickstart (5 minutes, replay mode)
+## Quickstart (5 minutes, macOS replay mode)
 
-```powershell
+Install Docker Desktop and Python 3 first. The bash scripts auto-detect `.venv/bin/python`
+when available and otherwise fall back to `python3`.
+
+```bash
 # 1. Install Python deps & bootstrap .env
-./scripts/setup.ps1
+bash scripts/setup.sh
 
 # 2. Bring up Kafka + Flink + Postgres and create topics
-./scripts/start_infra.ps1
+bash scripts/start_infra.sh
 
 # 3. (Optional) Train a sentiment model on a local GPU
-python scripts/prepare_dataset.py
-python scripts/train_model.py --epochs 3
-python scripts/export_model.py
-python scripts/eval_model.py
+python3 scripts/prepare_dataset.py
+python3 scripts/train_model.py --epochs 3
+python3 scripts/export_model.py
+python3 scripts/eval_model.py
 
 # 4. Start producers in replay mode using a small sample dump
 bash scripts/start_producers.sh --mode replay --file data/pushshift/sample.ndjson
 
 # 5. Submit the Flink job
-./scripts/submit_flink_job.ps1
+bash scripts/submit_flink_job.sh
 
 # 6. Open the dashboard
 bash scripts/start_dashboard.sh
 # -> http://localhost:8501
 ```
 
-For a one-shot orchestration, use `./scripts/run_all.ps1` (or `bash scripts/run_all.sh`).
+For a one-shot orchestration, use `bash scripts/run_all.sh`.
 
 ## Repository layout
 

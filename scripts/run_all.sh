@@ -1,18 +1,21 @@
 #!/usr/bin/env bash
 # End-to-end orchestrator for a demo run.
 set -euo pipefail
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
+HERE="$(repo_root)"
 cd "$HERE"
 
 bash scripts/setup.sh
 bash scripts/start_infra.sh
 
+PYTHON="$(resolve_python "$HERE")"
+
 if [ ! -f model/artifacts/sentiment.int8.onnx ]; then
   echo "[run_all] no model artifact found; train+export+eval"
-  python scripts/prepare_dataset.py
-  python scripts/train_model.py --epochs 3
-  python scripts/export_model.py
-  python scripts/eval_model.py
+  "$PYTHON" scripts/prepare_dataset.py
+  "$PYTHON" scripts/train_model.py --epochs 3
+  "$PYTHON" scripts/export_model.py
+  "$PYTHON" scripts/eval_model.py
 fi
 
 if [ "${MODE:-replay}" = "live" ]; then

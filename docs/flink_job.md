@@ -67,12 +67,12 @@ All thresholds live in [config/detection.yml](../config/detection.yml). Use
 
 ## Running the job
 
-```powershell
+```bash
 # Local (mini-cluster, for development)
-python flink_jobs/brand_crisis_job.py
+python3 flink_jobs/brand_crisis_job.py
 
 # Against the docker-compose cluster
-./scripts/submit_flink_job.ps1
+bash scripts/submit_flink_job.sh
 # or:
 docker compose -f infra/docker-compose.yml exec jobmanager `
   flink run -d -p 4 --pyModule flink_jobs.brand_crisis_job `

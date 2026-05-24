@@ -2,15 +2,15 @@
 
 ## Start everything from scratch (replay demo)
 
-```powershell
-./scripts/setup.ps1
-./scripts/start_infra.ps1
-python scripts/prepare_dataset.py
-python scripts/train_model.py --epochs 3
-python scripts/export_model.py
-python scripts/eval_model.py
+```bash
+bash scripts/setup.sh
+bash scripts/start_infra.sh
+python3 scripts/prepare_dataset.py
+python3 scripts/train_model.py --epochs 3
+python3 scripts/export_model.py
+python3 scripts/eval_model.py
 bash scripts/start_producers.sh --mode replay --file data/pushshift/sample.ndjson
-./scripts/submit_flink_job.ps1
+bash scripts/submit_flink_job.sh
 bash scripts/start_dashboard.sh
 ```
 
@@ -34,12 +34,12 @@ bash scripts/start_dashboard.sh
 3. Edit `config/detection.yml` (e.g., lower `spike_k` if missed, raise
    `min_volume` if false positives).
 4. Cancel and resubmit the Flink job (`Cancel` in the Flink UI, then
-   `./scripts/submit_flink_job.ps1`).
+   `bash scripts/submit_flink_job.sh`).
 
 ## Smoke test the alerting path
 
 ```bash
-python scripts/smoke_test.py --brand acme --count 200 --timeout 180
+python3 scripts/smoke_test.py --brand acme --count 200 --timeout 180
 ```
 
 Expects an alert on `reddit.alerts` for `acme` within 3 minutes. Exit code

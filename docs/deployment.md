@@ -13,7 +13,7 @@ The reference deployment runs entirely on a single host via
 | Flink TaskManagers | — | 2 replicas × 4 slots = 8 parallel slots. |
 | Postgres | 5432 | Init SQL creates `aggregates_5m`, `alerts`. |
 
-Start: `./scripts/start_infra.ps1` (or `bash scripts/start_infra.sh`).
+Start: `bash scripts/start_infra.sh`.
 Tear down: `bash scripts/teardown.sh`.
 
 ## Configuration sources

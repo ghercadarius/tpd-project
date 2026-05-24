@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 # Bring up infra and create Kafka topics.
 set -euo pipefail
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
+HERE="$(repo_root)"
 cd "$HERE"
+
+PYTHON="$(resolve_python "$HERE")"
 
 echo "[infra] docker compose up -d"
 docker compose -f infra/docker-compose.yml up -d
@@ -18,7 +21,7 @@ for i in $(seq 1 30); do
 done
 
 echo "[infra] init topics"
-python scripts/init_kafka.py
+"$PYTHON" scripts/init_kafka.py
 
 echo "[infra] OK"
 echo "  Kafka UI : http://localhost:8080"

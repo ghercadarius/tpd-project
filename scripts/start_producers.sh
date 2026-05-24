@@ -4,8 +4,11 @@
 #   --mode live
 #   --mode both     --file <path>
 set -euo pipefail
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
+HERE="$(repo_root)"
 cd "$HERE"
+
+PYTHON="$(resolve_python "$HERE")"
 
 MODE="replay"
 FILE=""
@@ -22,11 +25,11 @@ done
 
 run_replay() {
   if [ -z "$FILE" ]; then echo "--file is required for replay" >&2; exit 1; fi
-  python -m producers.pushshift_replay --file "$FILE" --rate "$RATE"
+  "$PYTHON" -m producers.pushshift_replay --file "$FILE" --rate "$RATE"
 }
 run_live() {
-  python -m producers.reddit_live --kind submissions &
-  python -m producers.reddit_live --kind comments &
+  "$PYTHON" -m producers.reddit_live --kind submissions &
+  "$PYTHON" -m producers.reddit_live --kind comments &
   wait
 }
 

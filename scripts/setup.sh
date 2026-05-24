@@ -1,19 +1,23 @@
 #!/usr/bin/env bash
 # Bootstrap a Python venv, install deps, and prepare the .env file.
 set -euo pipefail
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
+HERE="$(repo_root)"
 cd "$HERE"
+
+PYTHON="$(resolve_python "$HERE")"
 
 echo "[setup] Python venv"
 if [ ! -d ".venv" ]; then
-  python -m venv .venv
+  "$PYTHON" -m venv .venv
+else
+  echo "env already exists"
 fi
-# shellcheck disable=SC1091
-source .venv/bin/activate
+PYTHON="$HERE/.venv/bin/python"
 
 echo "[setup] pip install"
-python -m pip install --upgrade pip
-pip install -r requirements.txt
+"$PYTHON" -m pip install --upgrade pip
+"$PYTHON" -m pip install -r requirements.txt
 
 echo "[setup] .env"
 if [ ! -f ".env" ]; then

@@ -11,11 +11,8 @@ bash scripts/start_infra.sh
 PYTHON="$(resolve_python "$HERE")"
 
 if [ ! -f model/artifacts/sentiment.int8.onnx ]; then
-  echo "[run_all] no model artifact found; train+export+eval"
-  "$PYTHON" scripts/prepare_dataset.py
-  "$PYTHON" scripts/train_model.py --epochs 3
+  echo "[run_all] no model artifact found; exporting pretrained checkpoint"
   "$PYTHON" scripts/export_model.py
-  "$PYTHON" scripts/eval_model.py
 fi
 
 if [ "${MODE:-replay}" = "live" ]; then

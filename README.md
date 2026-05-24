@@ -1,9 +1,9 @@
 # Reddit Brand-Crisis Streaming Pipeline
 
 A lightweight real-time pipeline that ingests Reddit posts/comments, scores per-message
-sentiment with a locally GPU-trained transformer (served as quantized ONNX), detects
-negative spikes per brand using stateful Flink operators, and exposes trends + alerts on
-a Streamlit/FastAPI dashboard.
+sentiment with a pretrained transformer served as quantized ONNX, detects negative
+spikes per brand using stateful Flink operators, and exposes trends + alerts on a
+Streamlit/FastAPI dashboard.
 
 > Sources: Reddit Pushshift (historical replay) and the official Reddit API (live).
 > Engines: Apache Kafka + Apache Flink (PyFlink).
@@ -36,10 +36,11 @@ bash scripts/setup.sh
 # 2. Bring up Kafka + Flink + Postgres and create topics
 bash scripts/start_infra.sh
 
-# 3. (Optional) Train a sentiment model on a local GPU
-python3 scripts/prepare_dataset.py
-python3 scripts/train_model.py --epochs 3
+# 3. Materialize the pretrained sentiment artifacts
 python3 scripts/export_model.py
+
+# 3b. (Optional) Rebuild the experimental dataset / eval gate
+python3 scripts/prepare_dataset.py
 python3 scripts/eval_model.py
 
 # 4. Start producers in replay mode using a small sample dump
@@ -60,11 +61,11 @@ For a one-shot orchestration, use `bash scripts/run_all.sh`.
 ```
 config/         brands.yml, topics.yml, message schemas
 producers/      Pushshift replay + live Reddit (PRAW) producers
-model/          dataset, training, ONNX export, inference wrapper
+model/          optional dataset prep, pretrained ONNX export, inference wrapper
 flink_jobs/     PyFlink DataStream job + custom operators
 dashboard/      FastAPI backend + Streamlit frontend
 infra/          docker-compose for Kafka, Flink, Postgres
-scripts/        setup, training, deployment, smoke-test scripts
+scripts/        setup, artifact export, deployment, smoke-test scripts
 docs/           architecture, model, runbook, deployment, etc.
 tests/          unit tests
 ```

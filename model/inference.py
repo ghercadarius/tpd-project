@@ -12,6 +12,14 @@ from typing import Iterable
 import numpy as np
 
 LABELS = ["neg", "neu", "pos"]
+LABEL_ALIASES = {
+    "negative": "neg",
+    "neutral": "neu",
+    "positive": "pos",
+    "LABEL_0": "neg",
+    "LABEL_1": "neu",
+    "LABEL_2": "pos",
+}
 
 
 @dataclass
@@ -67,7 +75,14 @@ class SentimentScorer:
         out: list[Score] = []
         for row in probs:
             idx = int(row.argmax())
-            out.append(Score(label=LABELS[idx], neg_prob=float(row[0]), confidence=float(row[idx])))
+            raw_label = LABELS[idx]
+            out.append(
+                Score(
+                    label=LABEL_ALIASES.get(raw_label, raw_label),
+                    neg_prob=float(row[0]),
+                    confidence=float(row[idx]),
+                )
+            )
         return out
 
 

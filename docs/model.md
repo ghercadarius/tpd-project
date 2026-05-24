@@ -1,24 +1,28 @@
 # Sentiment model
 
-A small transformer fine-tuned locally on GPU, served as int8 ONNX inside the
-Flink TaskManager. The full lifecycle runs through four scripts.
+A small pretrained transformer served as int8 ONNX inside the Flink TaskManager.
+The default lifecycle no longer fine-tunes locally; it exports a published
+checkpoint and optionally keeps the dataset/eval tools for experimentation.
 
 ## Pipeline
 
 ```
-prepare_dataset  →  train_model  →  export_model  →  eval_model
-   (parquet)        (HF + GPU)       (ONNX + int8)    (gate)
+export_model  →  eval_model
+   (ONNX + int8)    (gate)
 ```
 
 | Step | Script | Output |
 |---|---|---|
-| Build dataset | `scripts/prepare_dataset.py` | `data/train/{train,val,test}.parquet`, `stats.json` |
-| Train | `scripts/train_model.py` | `model/artifacts/final/`, `run.json` |
-| Export | `scripts/export_model.py` | `sentiment.onnx`, `sentiment.int8.onnx`, `tokenizer/` |
-| Evaluate | `scripts/eval_model.py` | `baseline.json` (deploy gate) |
+| Export pretrained checkpoint | `scripts/export_model.py` | `sentiment.onnx`, `sentiment.int8.onnx`, `tokenizer/` |
+| Evaluate | `scripts/eval_model.py` | `baseline.json` (optional deploy gate) |
 
-## Dataset construction
-`model/dataset.py` combines:
+## Default checkpoint
+The default export target is `cardiffnlp/twitter-roberta-base-sentiment-latest`.
+It already provides a 3-class sentiment head, and the runtime normalizes labels
+to the repo contract: `neg`, `neu`, `pos`.
+
+## Optional dataset construction
+`model/dataset.py` remains available for experiments and comparisons. It combines:
 1. **Public corpus** — `tweet_eval/sentiment` from HuggingFace (3-class labels:
    neg/neu/pos). Provides high-quality supervision.
 2. **Reddit weak labels (optional)** — pass `--reddit-dump path.ndjson[.zst]`
@@ -27,18 +31,15 @@ prepare_dataset  →  train_model  →  export_model  →  eval_model
 
 Splits: 80 / 10 / 10. Deduplicated by exact text.
 
-## Training
-`model/train.py` fine-tunes `distilbert-base-uncased` (≈66M params) on 3-class
-sentiment using HuggingFace `Trainer`. Defaults: 3 epochs, batch 32, lr 5e-5,
-max_len 128, fp16 on CUDA. Evaluates per-epoch on `val.parquet`, keeps the best
-checkpoint by `f1_macro`, and reports test metrics into `run.json`.
-
-GPU is used automatically when available; pass `--cpu` to force CPU.
+## Training compatibility shim
+`model/train.py` and `scripts/train_model.py` no longer fine-tune locally.
+They now act as compatibility wrappers that materialize the same pretrained
+artifacts used by `scripts/export_model.py`.
 
 ## ONNX export & quantization
-`model/export_onnx.py` uses `optimum.onnxruntime` to export the HF model to
-ONNX (fp32) and `onnxruntime.quantization.quantize_dynamic` for an int8
-weight-quantized variant. Both files plus a tokenizer bundle live under
+`model/export_onnx.py` uses `optimum.onnxruntime` to export the pretrained HF
+checkpoint to ONNX (fp32) and `onnxruntime.quantization.quantize_dynamic` for
+an int8 weight-quantized variant. Both files plus a tokenizer bundle live under
 `model/artifacts/`.
 
 Why int8: lets the model run efficiently on CPU inside Flink TaskManagers

@@ -1,4 +1,4 @@
-"""Thin wrapper: fine-tune the sentiment model on a local GPU."""
+"""Compatibility wrapper: materialize pretrained sentiment artifacts."""
 from model.train import main
 
 if __name__ == "__main__":

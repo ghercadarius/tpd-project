@@ -45,7 +45,7 @@ flowchart LR
 |---|---|---|
 | Pushshift replay producer | `producers/pushshift_replay.py` | Stream historical dumps to Kafka (rate-controlled). |
 | Live Reddit producer | `producers/reddit_live.py` | PRAW-based stream of submissions + comments. |
-| Sentiment model | `model/{train,export_onnx,inference}.py` | GPU fine-tune; export to int8 ONNX; CPU-served scorer. |
+| Sentiment model | `model/{train,export_onnx,inference}.py` | Pretrained checkpoint export; int8 ONNX; CPU-served scorer. |
 | Flink job | `flink_jobs/brand_crisis_job.py` | Watermarked event-time pipeline: enrich → score → window → spike-detect. |
 | Spike detector | `flink_jobs/operators/spike_detector.py` | EWMA z-score with cooldown, keyed by brand. |
 | Sink consumer | `dashboard/sink_consumer.py` | Materialize aggregates + alerts into Postgres. |
@@ -90,7 +90,7 @@ against known crisis windows) or `reddit_live.py` (production). This matches
 the Lambda-architecture pattern from the Data Processing Models summary §2.
 
 ## Out of scope (v1)
-- Federated training of the sentiment model.
+- Local sentiment training.
 - Multi-language support (English only).
 - Reddit write/moderation actions.
 - Multi-region deployment.

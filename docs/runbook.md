@@ -5,9 +5,8 @@
 ```bash
 bash scripts/setup.sh
 bash scripts/start_infra.sh
-python3 scripts/prepare_dataset.py
-python3 scripts/train_model.py --epochs 3
 python3 scripts/export_model.py
+python3 scripts/prepare_dataset.py
 python3 scripts/eval_model.py
 bash scripts/start_producers.sh --mode replay --file data/pushshift/sample.ndjson
 bash scripts/submit_flink_job.sh

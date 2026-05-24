@@ -7,14 +7,11 @@ kafka-python==2.0.2
 praw==7.7.1
 zstandard==0.22.0          # for Pushshift .zst dumps
 
-# --- Model training (GPU) ---
+# --- Pretrained model export / runtime support ---
 torch>=2.2.0
 transformers==4.41.2
-datasets==2.19.1
-accelerate==0.30.1
 scikit-learn==1.4.2
 pandas==2.2.2
-pyarrow==16.1.0
 
 # --- Inference (CPU, used inside Flink) ---
 onnx==1.16.1

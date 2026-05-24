@@ -47,8 +47,9 @@ Tear down: `bash scripts/teardown.sh`.
 - **Flink parallelism**: `FLINK_PARALLELISM` env var or `-p` to `flink run`.
   Up to `partitions × keyspace` is useful; beyond that the spike detector
   becomes idle.
-- **GPU vs CPU**: training requires CUDA; serving runs on CPU inside the
-  Flink TaskManagers (int8 ONNX). No GPU is needed in production.
+- **GPU vs CPU**: artifact export can run on any machine with Python access to
+  the pretrained checkpoint; serving runs on CPU inside the Flink TaskManagers
+  (int8 ONNX). No GPU is needed in production.
 - **Memory**: TaskManager process size scales with the loaded ONNX model
   (~70MB for DistilBERT int8) plus RocksDB state.
 

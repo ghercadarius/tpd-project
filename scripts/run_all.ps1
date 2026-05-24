@@ -6,11 +6,8 @@ Set-Location (Resolve-Path "$PSScriptRoot/..")
 & "$PSScriptRoot/start_infra.ps1"
 
 if (-not (Test-Path "model/artifacts/sentiment.int8.onnx")) {
-    Write-Host "[run_all] no model artifact found; train+export+eval"
-    python scripts/prepare_dataset.py
-    python scripts/train_model.py --epochs 3
+    Write-Host "[run_all] no model artifact found; exporting pretrained checkpoint"
     python scripts/export_model.py
-    python scripts/eval_model.py
 }
 
 $Mode = if ($env:MODE) { $env:MODE } else { "replay" }

@@ -1,13 +1,17 @@
-"""Replay a Pushshift NDJSON dump into Kafka, keyed by brand.
+"""Replay a downloaded Reddit dataset into Kafka, keyed by brand.
 
 Modes:
     --rate realtime   sleep based on consecutive `created_utc` deltas
     --rate max        push as fast as possible (backfill / smoke tests)
     --rate <float>    multiplier (e.g. 10.0 = 10x faster than wall clock)
+
+The input file can be a JSONL / NDJSON dump, optionally compressed with .zst,
+or a CSV export with common Reddit columns.
 """
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import logging
 import os
@@ -23,8 +27,35 @@ from producers.common import load_brands, match_brand
 LOG = logging.getLogger("pushshift_replay")
 
 
+def _first(rec: dict, *keys: str, default=None):
+    for key in keys:
+        value = rec.get(key)
+        if value not in (None, ""):
+            return value
+    return default
+
+
+def _coerce_float(value, default: float = 0.0) -> float:
+    try:
+        if value in (None, ""):
+            return default
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _coerce_int(value, default: int = 0) -> int:
+    try:
+        if value in (None, ""):
+            return default
+        return int(float(value))
+    except (TypeError, ValueError):
+        return default
+
+
 def iter_records(path: Path) -> Iterator[dict]:
-    if path.suffix == ".zst":
+    suffixes = [s.lower() for s in path.suffixes]
+    if suffixes[-1:] == [".zst"]:
         import zstandard as zstd
 
         with path.open("rb") as fh:
@@ -40,6 +71,12 @@ def iter_records(path: Path) -> Iterator[dict]:
                     for line in lines:
                         if line.strip():
                             yield json.loads(line)
+    elif suffixes[-1:] == [".csv"]:
+        with path.open("r", encoding="utf-8", newline="") as fh:
+            reader = csv.DictReader(fh)
+            for row in reader:
+                if row:
+                    yield row
     else:
         with path.open("r", encoding="utf-8") as fh:
             for line in fh:
@@ -49,19 +86,26 @@ def iter_records(path: Path) -> Iterator[dict]:
 
 
 def to_message(rec: dict, brand: str) -> tuple[str, dict]:
-    is_comment = "body" in rec and "title" not in rec
+    kind = str(_first(rec, "type", "kind", default="")).strip().lower()
+    if kind in {"comment", "submission"}:
+        is_comment = kind == "comment"
+    else:
+        is_comment = bool(_first(rec, "body", "text") and not _first(rec, "title", "selftext"))
+
+    body = _first(rec, "body", "selftext", "text", default="") or ""
+    title = _first(rec, "title", default=None)
     msg = {
-        "id": rec.get("id") or rec.get("name"),
+        "id": str(_first(rec, "id", "name", "comment_id", "submission_id", default="")),
         "type": "comment" if is_comment else "submission",
-        "subreddit": rec.get("subreddit", ""),
-        "author": rec.get("author"),
+        "subreddit": str(_first(rec, "subreddit", default="unknown")),
+        "author": _first(rec, "author", default=None),
         "brand": brand,
-        "title": rec.get("title"),
-        "body": rec.get("body") or rec.get("selftext") or "",
-        "permalink": rec.get("permalink"),
-        "score": int(rec.get("score") or 0),
-        "parent_id": rec.get("parent_id"),
-        "created_utc": float(rec.get("created_utc") or 0),
+        "title": title,
+        "body": body,
+        "permalink": _first(rec, "permalink", default=None),
+        "score": _coerce_int(_first(rec, "score", default=0)),
+        "parent_id": _first(rec, "parent_id", default=None),
+        "created_utc": _coerce_float(_first(rec, "created_utc", "created", "timestamp", default=0.0)),
         "ingested_at": time.time(),
     }
     return msg["type"], msg

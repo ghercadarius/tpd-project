@@ -2,7 +2,7 @@ name: brand-crisis
 
 services:
   kafka:
-    image: bitnami/kafka:4.3
+    image: apache/kafka:4.3.0
     container_name: kafka
     ports:
       - "19092:19092"   # host

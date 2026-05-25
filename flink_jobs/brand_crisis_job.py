@@ -94,17 +94,21 @@ class EnrichMap(MapFunction):
             rec = json.loads(value)
         except Exception:
             return None
-        author = (rec.get("author") or "").strip()
-        if author and _BOT_RE.search(author):
+        try:
+            author = (rec.get("author") or "").strip()
+            if author and _BOT_RE.search(author):
+                return None
+            text = " ".join(filter(None, [rec.get("title"), rec.get("body")]))
+            text = _URL_RE.sub(" ", text)
+            text = _MD_RE.sub(" ", text)
+            text = re.sub(r"\s+", " ", text).strip()
+            if len(text) < 5:
+                return None
+            rec["text"] = text[:512]
+            return json.dumps(rec)
+        except Exception:
+            LOG.exception("enrich map failed; dropping record")
             return None
-        text = " ".join(filter(None, [rec.get("title"), rec.get("body")]))
-        text = _URL_RE.sub(" ", text)
-        text = _MD_RE.sub(" ", text)
-        text = re.sub(r"\s+", " ", text).strip()
-        if len(text) < 5:
-            return None
-        rec["text"] = text[:512]
-        return json.dumps(rec)
 
 
 class SentimentMap(MapFunction):
@@ -135,56 +139,74 @@ class SentimentMap(MapFunction):
             rec = json.loads(value)
         except Exception:
             return None
-        s = self._scorer.score(rec.get("text", ""))
-        rec["label"] = s.label
-        rec["neg_prob"] = round(s.neg_prob, 4)
-        return json.dumps(rec)
+        try:
+            s = self._scorer.score(rec.get("text", ""))
+            rec["label"] = s.label
+            rec["neg_prob"] = round(float(s.neg_prob), 4)
+            return json.dumps(rec)
+        except Exception:
+            LOG.exception("sentiment scoring failed; dropping record")
+            return None
 
 
 class BrandWindowAgg(ProcessWindowFunction):
     """Per-brand window aggregate: volume, neg counts, EWMA inputs."""
 
     def process(self, key: str, ctx, elements):
-        volume = neg_count = 0
-        neg_prob_sum = influencer_neg = 0.0
-        authors: set[str] = set()
-        sample_text: str | None = None
-        worst_neg = 0.0
+        try:
+            volume = neg_count = 0
+            neg_prob_sum = influencer_neg = 0.0
+            authors: set[str] = set()
+            sample_text: str | None = None
+            worst_neg = 0.0
 
-        for raw in elements:
-            try:
-                rec = json.loads(raw)
-            except Exception:
-                continue
-            volume += 1
-            neg_p = float(rec.get("neg_prob", 0.0))
-            neg_prob_sum += neg_p
-            if rec.get("label") == "neg":
-                neg_count += 1
-            if rec.get("author"):
-                authors.add(rec["author"])
-            weight = math.log1p(max(0, int(rec.get("score") or 0)))
-            influencer_neg += neg_p * weight
-            if neg_p > worst_neg:
-                worst_neg = neg_p
-                sample_text = (rec.get("text") or "")[:280]
+            for raw in elements:
+                try:
+                    rec = json.loads(raw)
+                except Exception:
+                    continue
 
-        if volume == 0:
+                try:
+                    volume += 1
+                    neg_p = float(rec.get("neg_prob", 0.0))
+                    neg_prob_sum += neg_p
+                    if rec.get("label") == "neg":
+                        neg_count += 1
+                    author = rec.get("author")
+                    if author:
+                        authors.add(str(author))
+                    score = rec.get("score", 0)
+                    try:
+                        score_i = int(score) if score not in (None, "") else 0
+                    except Exception:
+                        score_i = 0
+                    weight = math.log1p(max(0, score_i))
+                    influencer_neg += neg_p * weight
+                    if neg_p > worst_neg:
+                        worst_neg = neg_p
+                        sample_text = str(rec.get("text") or "")[:280]
+                except Exception:
+                    continue
+
+            if volume == 0:
+                return
+
+            win = ctx.window()
+            yield json.dumps({
+                "brand": key,
+                "window_start": win.start / 1000.0,
+                "window_end": win.end / 1000.0,
+                "volume": volume,
+                "neg_count": neg_count,
+                "neg_ratio": round(neg_count / volume, 4),
+                "avg_neg_prob": round(neg_prob_sum / volume, 4),
+                "unique_authors": len(authors),
+                "influencer_neg": round(influencer_neg, 4),
+                "sample_text": sample_text,
+            })
+        except Exception:
+            LOG.exception("window aggregate failed for brand=%s", key)
             return
-
-        win = ctx.window()
-        yield json.dumps({
-            "brand": key,
-            "window_start": win.start / 1000.0,
-            "window_end": win.end / 1000.0,
-            "volume": volume,
-            "neg_count": neg_count,
-            "neg_ratio": round(neg_count / volume, 4),
-            "avg_neg_prob": round(neg_prob_sum / volume, 4),
-            "unique_authors": len(authors),
-            "influencer_neg": round(influencer_neg, 4),
-            "sample_text": sample_text,
-        })
 
 
 # ---------------------------------------------------------------------------

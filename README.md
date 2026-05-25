@@ -68,7 +68,7 @@ FILE=/path/to/dump.zst bash scripts/run_all.sh
 By default the pipeline uses VADER (no download needed).
 To upgrade to the pretrained Twitter-RoBERTa model:
 ```bash
-pip install torch transformers optimum
+pip install torch transformers "optimum[onnxruntime]" onnx
 python scripts/export_model.py          # downloads + exports ~500 MB model
 # then set in .env:
 SENTIMENT_BACKEND=onnx

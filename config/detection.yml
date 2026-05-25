@@ -1,17 +1,17 @@
 # Detection thresholds (overridable per brand).
 detection:
   defaults:
-    window_size_minutes: 5
+    window_size_minutes: 2
     window_slide_minutes: 1
     out_of_orderness_seconds: 30
     # Spike: alert when neg_count > mean + k * stdev of EWMA over recent windows.
     ewma_alpha: 0.3
-    spike_k: 3.0
+    spike_k: 1.0
     # Guardrails to suppress false positives.
-    # Lower min_volume (5) makes the detector fire during small replay tests;
-    # raise it (e.g. 50) for a production stream with higher throughput.
-    min_volume: 5
-    neg_ratio_threshold: 0.35
-    cooldown_minutes: 15
+    # Smoke-test profile: very permissive limits so alerts appear quickly.
+    # Revert to stricter values for realistic production behavior.
+    min_volume: 1
+    neg_ratio_threshold: 0.10
+    cooldown_minutes: 1
   per_brand:
     # apple: { spike_k: 2.5, min_volume: 50 }

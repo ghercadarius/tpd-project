@@ -2,13 +2,12 @@ name: brand-crisis
 
 services:
   kafka:
-    image: bitnami/kafka:3.7
+    image: bitnami/kafka:4.3
     container_name: kafka
     ports:
       - "19092:19092"   # host
       - "9092:9092"     # internal
     environment:
-      - KAFKA_ENABLE_KRAFT=yes
       - KAFKA_CFG_PROCESS_ROLES=broker,controller
       - KAFKA_CFG_NODE_ID=1
       - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1@kafka:9093
@@ -18,7 +17,6 @@ services:
       - KAFKA_CFG_INTER_BROKER_LISTENER_NAME=PLAINTEXT
       - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
       - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=false
-      - ALLOW_PLAINTEXT_LISTENER=yes
     healthcheck:
       test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1"]
       interval: 10s

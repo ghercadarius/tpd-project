@@ -68,11 +68,19 @@ FILE=/path/to/dump.zst bash scripts/run_all.sh
 By default the pipeline uses VADER (no download needed).
 To upgrade to the pretrained Twitter-RoBERTa model:
 ```bash
+# recommended: do this in a separate export-only virtualenv
+python3.11 -m venv .venv-export
+source .venv-export/bin/activate
 pip install torch transformers "optimum[onnxruntime]" onnx
 python scripts/export_model.py          # downloads + exports ~500 MB model
 # then set in .env:
 SENTIMENT_BACKEND=onnx
 ```
+
+The ONNX export stack pulls a newer `protobuf` that conflicts with the
+`apache-beam` / `streamlit` pins used by the main streaming environment, so keep
+it isolated from `.venv` and only copy the generated `model/artifacts/` back to
+the main project.
 
 ## Repository layout
 

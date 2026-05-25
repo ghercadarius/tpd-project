@@ -1,17 +1,22 @@
 # Brands monitored by the pipeline.
-# Each entry's `keywords` are case-insensitively matched against post titles/bodies
-# in the producers; the matched brand becomes the Kafka message key so all records
-# for one brand land on a single partition (preserves stateful operator locality).
+# Keywords are matched case-insensitively (whole-word) against post title + body.
+# The matched brand name becomes the Kafka partition key, ensuring all events for
+# one brand land on the same partition for stateful locality in Flink.
+#
+# Replace these examples with the brands relevant to your dataset.
 brands:
-  - name: acme
-    keywords: ["acme", "acme corp", "acmecorp"]
+  - name: apple
+    keywords: ["apple", "iphone", "ipad", "macbook", "ios", "macos", "airpods"]
     subreddits: ["all"]
-  - name: globex
-    keywords: ["globex", "globex inc"]
+  - name: samsung
+    keywords: ["samsung", "galaxy", "one ui"]
     subreddits: ["all"]
-  - name: initech
-    keywords: ["initech"]
+  - name: tesla
+    keywords: ["tesla", "elon musk", "cybertruck", "model 3", "model s", "model x", "model y"]
     subreddits: ["all"]
-  - name: umbrella
-    keywords: ["umbrella corp", "umbrella corporation"]
+  - name: twitter
+    keywords: ["twitter", "tweet", "x.com", "elon twitter"]
+    subreddits: ["all"]
+  - name: reddit
+    keywords: ["reddit", "r/", "subreddit", "redditors"]
     subreddits: ["all"]

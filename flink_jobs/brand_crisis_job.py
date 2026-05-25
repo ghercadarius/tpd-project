@@ -1,17 +1,17 @@
 """Brand crisis detection PyFlink job.
 
-Pipeline (DataStream API):
-    1. Sources         : Kafka(reddit.raw.submissions) + Kafka(reddit.raw.comments)
-    2. Watermark       : event-time from `created_utc`, 30s out-of-orderness
-    3. Enrichment Map  : cleanup, lang filter, bot drop
-    4. Sentiment UDF   : ONNX scorer (lazy, per TaskManager) -> reddit.scored
-    5. KeyBy(brand)    : sliding 5min/1min event-time window
-    6. ProcessWindow   : per-brand aggregates -> reddit.aggregates
-    7. SpikeDetector   : KeyedProcessFunction with EWMA state -> reddit.alerts
+Pipeline:
+  1. Sources     — Kafka(reddit.raw.submissions) ∪ Kafka(reddit.raw.comments)
+  2. Watermark   — event-time from `created_utc`, bounded out-of-orderness
+  3. EnrichMap   — clean text, drop bots/blanks
+  4. SentimentMap— VADER (or ONNX) score → reddit.scored
+  5. KeyBy(brand)→ SlidingEventTimeWindow → BrandWindowAgg → reddit.aggregates
+  6. SpikeDetector (KeyedProcessFunction) → reddit.alerts
 
-Run:
-    python flink_jobs/brand_crisis_job.py            # local mini-cluster
-    flink run -py flink_jobs/brand_crisis_job.py     # against a cluster
+Run locally:
+    python -m flink_jobs.brand_crisis_job
+
+Requirements: apache-flink==1.18.1, Python 3.8–3.11, Java 11+
 """
 from __future__ import annotations
 
@@ -30,109 +30,101 @@ from pyflink.common.watermark_strategy import TimestampAssigner
 from pyflink.datastream import StreamExecutionEnvironment
 from pyflink.datastream.checkpointing_mode import CheckpointingMode
 from pyflink.datastream.connectors.kafka import (
-    KafkaOffsetsInitializer, KafkaSink, KafkaSource, KafkaRecordSerializationSchema,
+    KafkaOffsetsInitializer,
+    KafkaRecordSerializationSchema,
+    KafkaSink,
+    KafkaSource,
 )
-from pyflink.datastream.functions import (
-    FlatMapFunction, MapFunction, ProcessWindowFunction,
-)
+from pyflink.datastream.functions import FlatMapFunction, MapFunction, ProcessWindowFunction
 from pyflink.datastream.window import SlidingEventTimeWindows
 
 from flink_jobs.operators.spike_detector import SpikeDetector
 
 LOG = logging.getLogger("brand_crisis_job")
 
-URL_RE = re.compile(r"https?://\S+")
-MD_RE = re.compile(r"[*_>~`]+")
-BOT_RE = re.compile(r"(bot|automoderator)$", re.IGNORECASE)
+_URL_RE = re.compile(r"https?://\S+")
+_MD_RE = re.compile(r"[*_>~`]+")
+_BOT_RE = re.compile(r"(bot|automoderator)$", re.IGNORECASE)
 
 
-# --------------------------------------------------------------------------- #
-# Helpers                                                                     #
-# --------------------------------------------------------------------------- #
-def load_detection_config(path: str = "config/detection.yml") -> dict:
-    p = Path(path)
-    if not p.exists():
-        # When running inside the Flink container the config is mounted under usrlib.
-        alt = Path("/opt/flink/usrlib/config/detection.yml")
-        if alt.exists():
-            p = alt
-    return yaml.safe_load(p.read_text(encoding="utf-8")).get("detection", {}).get("defaults", {})
+# ---------------------------------------------------------------------------
+# Config
+# ---------------------------------------------------------------------------
+
+def _load_detection_cfg() -> dict:
+    for p in ("config/detection.yml", "/opt/flink/usrlib/config/detection.yml"):
+        path = Path(p)
+        if path.exists():
+            return yaml.safe_load(path.read_text()).get("detection", {}).get("defaults", {})
+    return {}
 
 
-class _EventTimeAssigner(TimestampAssigner):
-    def extract_timestamp(self, value, record_timestamp: int) -> int:
+# ---------------------------------------------------------------------------
+# Watermark
+# ---------------------------------------------------------------------------
+
+class _UtcAssigner(TimestampAssigner):
+    def extract_timestamp(self, value, record_ts: int) -> int:
         try:
-            rec = json.loads(value)
-            return int(float(rec.get("created_utc", time.time())) * 1000)
+            return int(float(json.loads(value).get("created_utc", 0)) * 1000)
         except Exception:
-            return record_timestamp
+            return record_ts
 
 
-# --------------------------------------------------------------------------- #
-# Operators                                                                   #
-# --------------------------------------------------------------------------- #
+# ---------------------------------------------------------------------------
+# Operators
+# ---------------------------------------------------------------------------
+
 class EnrichMap(MapFunction):
-    """Cleanup + language/bot filtering. Returns enriched JSON or None to drop."""
+    """Clean text, drop bot authors and blank records. Returns None to filter."""
 
-    def map(self, value):
+    def map(self, value: str):
         try:
             rec = json.loads(value)
         except Exception:
             return None
         author = (rec.get("author") or "").strip()
-        if author and BOT_RE.search(author):
+        if author and _BOT_RE.search(author):
             return None
         text = " ".join(filter(None, [rec.get("title"), rec.get("body")]))
-        text = URL_RE.sub(" ", text)
-        text = MD_RE.sub(" ", text)
+        text = _URL_RE.sub(" ", text)
+        text = _MD_RE.sub(" ", text)
         text = re.sub(r"\s+", " ", text).strip()
-        if len(text) < 3:
+        if len(text) < 5:
             return None
         rec["text"] = text[:512]
         return json.dumps(rec)
 
 
-class SentimentFlatMap(FlatMapFunction):
-    """Lazy ONNX scorer; scores text and emits an enriched 'scored' record."""
+class SentimentMap(MapFunction):
+    """Score text; initialise the scorer lazily per TaskManager process."""
+
+    _scorer = None
 
     def open(self, ctx):
-        # Import lazily so the job can be parsed even when the artifact is absent.
         from model.inference import get_scorer
         self._scorer = get_scorer()
 
-    def flat_map(self, value):
-        if value is None:
-            return
+    def map(self, value: str):
+        if not value:
+            return None
         try:
             rec = json.loads(value)
         except Exception:
-            return
+            return None
         s = self._scorer.score(rec.get("text", ""))
-        out = {
-            "id": rec.get("id"),
-            "type": rec.get("type"),
-            "subreddit": rec.get("subreddit"),
-            "author": rec.get("author"),
-            "brand": rec.get("brand"),
-            "text": rec.get("text"),
-            "permalink": rec.get("permalink"),
-            "created_utc": rec.get("created_utc"),
-            "label": s.label,
-            "neg_prob": s.neg_prob,
-            "score": rec.get("score", 0),
-        }
-        yield json.dumps(out)
+        rec["label"] = s.label
+        rec["neg_prob"] = round(s.neg_prob, 4)
+        return json.dumps(rec)
 
 
 class BrandWindowAgg(ProcessWindowFunction):
-    """Compute per-brand aggregates for a sliding window of scored records."""
+    """Per-brand window aggregate: volume, neg counts, EWMA inputs."""
 
-    def process(self, key, context, elements):
-        volume = 0
-        neg_count = 0
-        neg_prob_sum = 0.0
+    def process(self, key: str, ctx, elements):
+        volume = neg_count = 0
+        neg_prob_sum = influencer_neg = 0.0
         authors: set[str] = set()
-        influencer_neg = 0.0
         sample_text: str | None = None
         worst_neg = 0.0
 
@@ -148,45 +140,47 @@ class BrandWindowAgg(ProcessWindowFunction):
                 neg_count += 1
             if rec.get("author"):
                 authors.add(rec["author"])
-            # Influencer weight: log(1 + score) approximates audience reach.
             weight = math.log1p(max(0, int(rec.get("score") or 0)))
             influencer_neg += neg_p * weight
             if neg_p > worst_neg:
                 worst_neg = neg_p
                 sample_text = (rec.get("text") or "")[:280]
 
-        win = context.window()
-        agg = {
+        if volume == 0:
+            return
+
+        win = ctx.window()
+        yield json.dumps({
             "brand": key,
             "window_start": win.start / 1000.0,
             "window_end": win.end / 1000.0,
             "volume": volume,
             "neg_count": neg_count,
-            "neg_ratio": (neg_count / volume) if volume else 0.0,
-            "avg_neg_prob": (neg_prob_sum / volume) if volume else 0.0,
+            "neg_ratio": round(neg_count / volume, 4),
+            "avg_neg_prob": round(neg_prob_sum / volume, 4),
             "unique_authors": len(authors),
-            "influencer_neg": influencer_neg,
+            "influencer_neg": round(influencer_neg, 4),
             "sample_text": sample_text,
-        }
-        yield json.dumps(agg)
+        })
 
 
-# --------------------------------------------------------------------------- #
-# Job builder                                                                 #
-# --------------------------------------------------------------------------- #
-def _kafka_source(topic: str, bootstrap: str, group: str) -> KafkaSource:
+# ---------------------------------------------------------------------------
+# Kafka helpers
+# ---------------------------------------------------------------------------
+
+def _source(topic: str, bootstrap: str, group: str) -> KafkaSource:
     return (
         KafkaSource.builder()
         .set_bootstrap_servers(bootstrap)
         .set_topics(topic)
         .set_group_id(group)
-        .set_starting_offsets(KafkaOffsetsInitializer.latest())
+        .set_starting_offsets(KafkaOffsetsInitializer.earliest())
         .set_value_only_deserializer(SimpleStringSchema())
         .build()
     )
 
 
-def _kafka_sink(topic: str, bootstrap: str) -> KafkaSink:
+def _sink(topic: str, bootstrap: str) -> KafkaSink:
     return (
         KafkaSink.builder()
         .set_bootstrap_servers(bootstrap)
@@ -200,53 +194,64 @@ def _kafka_sink(topic: str, bootstrap: str) -> KafkaSink:
     )
 
 
-def build_job(env: StreamExecutionEnvironment) -> None:
-    bootstrap = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:19092")
-    cfg = load_detection_config()
-    out_of_orderness = int(cfg.get("out_of_orderness_seconds", 30))
-    win_size = int(cfg.get("window_size_minutes", 5))
-    win_slide = int(cfg.get("window_slide_minutes", 1))
+# ---------------------------------------------------------------------------
+# Job
+# ---------------------------------------------------------------------------
 
-    env.set_parallelism(int(os.environ.get("FLINK_PARALLELISM", "4")))
+def build_job(env: StreamExecutionEnvironment) -> None:
+    cfg = _load_detection_cfg()
+    bootstrap = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:19092")
+
+    ooo_s = int(cfg.get("out_of_orderness_seconds", 30))
+    win_m = int(cfg.get("window_size_minutes", 5))
+    slide_m = int(cfg.get("window_slide_minutes", 1))
+
+    env.set_parallelism(int(os.environ.get("FLINK_PARALLELISM", "2")))
     env.enable_checkpointing(30_000, CheckpointingMode.EXACTLY_ONCE)
 
     wm = (
         WatermarkStrategy
-        .for_bounded_out_of_orderness(Duration.of_seconds(out_of_orderness))
-        .with_timestamp_assigner(_EventTimeAssigner())
+        .for_bounded_out_of_orderness(Duration.of_seconds(ooo_s))
+        .with_timestamp_assigner(_UtcAssigner())
     )
 
+    group = "flink-brand-crisis"
     src_sub = env.from_source(
-        _kafka_source(os.environ.get("TOPIC_RAW_SUBMISSIONS", "reddit.raw.submissions"),
-                      bootstrap, "flink-brand-crisis"),
-        wm, "kafka-submissions"
+        _source(os.environ.get("TOPIC_RAW_SUBMISSIONS", "reddit.raw.submissions"), bootstrap, group),
+        wm, "kafka-submissions",
     )
     src_com = env.from_source(
-        _kafka_source(os.environ.get("TOPIC_RAW_COMMENTS", "reddit.raw.comments"),
-                      bootstrap, "flink-brand-crisis"),
-        wm, "kafka-comments"
+        _source(os.environ.get("TOPIC_RAW_COMMENTS", "reddit.raw.comments"), bootstrap, group),
+        wm, "kafka-comments",
     )
-    raw = src_sub.union(src_com)
 
     enriched = (
-        raw.map(EnrichMap(), output_type=Types.STRING())
-           .filter(lambda x: x is not None)
-           .name("enrich")
+        src_sub.union(src_com)
+        .map(EnrichMap(), output_type=Types.STRING())
+        .filter(lambda x: x is not None)
+        .name("enrich")
     )
 
-    scored = enriched.flat_map(SentimentFlatMap(), output_type=Types.STRING()).name("sentiment")
-    scored.sink_to(_kafka_sink(os.environ.get("TOPIC_SCORED", "reddit.scored"), bootstrap)) \
-          .name("sink-scored")
+    scored = (
+        enriched
+        .map(SentimentMap(), output_type=Types.STRING())
+        .filter(lambda x: x is not None)
+        .name("sentiment")
+    )
+    scored.sink_to(
+        _sink(os.environ.get("TOPIC_SCORED", "reddit.scored"), bootstrap)
+    ).name("sink-scored")
 
     aggregates = (
-        scored.key_by(lambda v: json.loads(v).get("brand", "_"), key_type=Types.STRING())
-              .window(SlidingEventTimeWindows.of(
-                  Time.minutes(win_size), Time.minutes(win_slide)))
-              .process(BrandWindowAgg(), output_type=Types.STRING())
-              .name("aggregate")
+        scored
+        .key_by(lambda v: json.loads(v).get("brand", "_"), key_type=Types.STRING())
+        .window(SlidingEventTimeWindows.of(Time.minutes(win_m), Time.minutes(slide_m)))
+        .process(BrandWindowAgg(), output_type=Types.STRING())
+        .name("aggregate")
     )
-    aggregates.sink_to(_kafka_sink(os.environ.get("TOPIC_AGGREGATES", "reddit.aggregates"),
-                                   bootstrap)).name("sink-aggregates")
+    aggregates.sink_to(
+        _sink(os.environ.get("TOPIC_AGGREGATES", "reddit.aggregates"), bootstrap)
+    ).name("sink-aggregates")
 
     detector = SpikeDetector(
         alpha=float(cfg.get("ewma_alpha", 0.3)),
@@ -256,12 +261,14 @@ def build_job(env: StreamExecutionEnvironment) -> None:
         cooldown_seconds=int(cfg.get("cooldown_minutes", 15)) * 60,
     )
     alerts = (
-        aggregates.key_by(lambda v: json.loads(v).get("brand", "_"), key_type=Types.STRING())
-                  .process(detector, output_type=Types.STRING())
-                  .name("spike-detector")
+        aggregates
+        .key_by(lambda v: json.loads(v).get("brand", "_"), key_type=Types.STRING())
+        .process(detector, output_type=Types.STRING())
+        .name("spike-detector")
     )
-    alerts.sink_to(_kafka_sink(os.environ.get("TOPIC_ALERTS", "reddit.alerts"), bootstrap)) \
-          .name("sink-alerts")
+    alerts.sink_to(
+        _sink(os.environ.get("TOPIC_ALERTS", "reddit.alerts"), bootstrap)
+    ).name("sink-alerts")
 
 
 def main() -> None:

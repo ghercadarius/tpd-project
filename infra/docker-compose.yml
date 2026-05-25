@@ -2,75 +2,41 @@ name: brand-crisis
 
 services:
   kafka:
-    image: apache/kafka:4.3.0
+    image: apache/kafka:3.7.0
     container_name: kafka
     ports:
-      - "19092:19092"   # host
+      - "19092:19092"   # host (producers / consumers connect here)
       - "9092:9092"     # internal
     environment:
-      - KAFKA_CFG_PROCESS_ROLES=broker,controller
-      - KAFKA_CFG_NODE_ID=1
-      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1@kafka:9093
-      - KAFKA_CFG_LISTENERS=PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,EXTERNAL://0.0.0.0:19092
-      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092,EXTERNAL://127.0.0.1:19092
-      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
-      - KAFKA_CFG_INTER_BROKER_LISTENER_NAME=PLAINTEXT
-      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
-      - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=false
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,EXTERNAL://0.0.0.0:19092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://127.0.0.1:19092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_LOG_SEGMENT_BYTES: 134217728
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
     healthcheck:
       test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1"]
       interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 15
 
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     container_name: kafka-ui
-    depends_on: [kafka]
+    depends_on:
+      kafka:
+        condition: service_healthy
     ports:
       - "18080:8080"
     environment:
-      - KAFKA_CLUSTERS_0_NAME=local
-      - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka:9092
-
-  jobmanager:
-    image: flink:1.18.1-scala_2.12-java11
-    container_name: flink-jobmanager
-    ports:
-      - "8081:8081"
-    command: jobmanager
-    environment:
-      - |
-        FLINK_PROPERTIES=
-        jobmanager.rpc.address: jobmanager
-        state.backend: rocksdb
-        state.checkpoints.dir: file:///opt/flink/checkpoints
-        execution.checkpointing.interval: 30s
-        execution.checkpointing.mode: EXACTLY_ONCE
-    volumes:
-      - flink-checkpoints:/opt/flink/checkpoints
-      - ../flink_jobs:/opt/flink/usrlib/flink_jobs
-      - ../model/artifacts:/opt/flink/usrlib/model_artifacts
-      - ../config:/opt/flink/usrlib/config
-
-  taskmanager:
-    image: flink:1.18.1-scala_2.12-java11
-    depends_on: [jobmanager]
-    command: taskmanager
-    deploy:
-      replicas: 2
-    environment:
-      - |
-        FLINK_PROPERTIES=
-        jobmanager.rpc.address: jobmanager
-        taskmanager.numberOfTaskSlots: 4
-        state.backend: rocksdb
-        state.checkpoints.dir: file:///opt/flink/checkpoints
-    volumes:
-      - flink-checkpoints:/opt/flink/checkpoints
-      - ../flink_jobs:/opt/flink/usrlib/flink_jobs
-      - ../model/artifacts:/opt/flink/usrlib/model_artifacts
-      - ../config:/opt/flink/usrlib/config
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
 
   postgres:
     image: postgres:16
@@ -78,9 +44,9 @@ services:
     ports:
       - "5432:5432"
     environment:
-      - POSTGRES_DB=brandcrisis
-      - POSTGRES_USER=brand
-      - POSTGRES_PASSWORD=brand
+      POSTGRES_DB: brandcrisis
+      POSTGRES_USER: brand
+      POSTGRES_PASSWORD: brand
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./postgres-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
@@ -91,5 +57,4 @@ services:
       retries: 10
 
 volumes:
-  flink-checkpoints:
   postgres-data:

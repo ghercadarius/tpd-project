@@ -1,8 +1,8 @@
-"""Idempotent Kafka topic management driven by config/topics.yml.
+"""Create Kafka topics declared in config/topics.yml (idempotent).
 
-Examples:
-    python scripts/init_kafka.py            # create-if-missing
-    python scripts/init_kafka.py --check    # exit non-zero on drift
+Usage:
+    python scripts/init_kafka.py            # create missing topics
+    python scripts/init_kafka.py --check    # exit 1 if any topic is missing
 """
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 import yaml
-from confluent_kafka.admin import AdminClient, ConfigResource, NewTopic
+from confluent_kafka.admin import AdminClient, NewTopic
 from dotenv import load_dotenv
 
 LOG = logging.getLogger("init_kafka")
@@ -22,49 +22,57 @@ LOG = logging.getLogger("init_kafka")
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     load_dotenv()
+
     p = argparse.ArgumentParser()
     p.add_argument("--config", type=Path, default=Path("config/topics.yml"))
-    p.add_argument("--check", action="store_true")
+    p.add_argument("--check", action="store_true", help="Exit 1 if topics are missing.")
     args = p.parse_args()
 
     bootstrap = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:19092")
+    LOG.info("connecting to Kafka at %s", bootstrap)
     admin = AdminClient({"bootstrap.servers": bootstrap})
-    declared = yaml.safe_load(args.config.read_text())["topics"]
-    existing = admin.list_topics(timeout=10).topics
 
-    drift = 0
+    declared: list[dict] = yaml.safe_load(args.config.read_text())["topics"]
+    existing = admin.list_topics(timeout=15).topics
+
+    errors = 0
     to_create: list[NewTopic] = []
+
     for t in declared:
         name = t["name"]
-        if name not in existing:
-            LOG.info("missing -> create %s (partitions=%d)", name, t["partitions"])
+        if name in existing:
+            current = len(existing[name].partitions)
+            if current != t["partitions"]:
+                LOG.warning("partition drift: %s has %d, expected %d", name, current, t["partitions"])
+                errors += 1
+            else:
+                LOG.info("ok  %s (%d partitions)", name, current)
+        else:
             if args.check:
-                drift += 1
+                LOG.error("missing topic: %s", name)
+                errors += 1
             else:
                 to_create.append(NewTopic(
                     topic=name,
                     num_partitions=t["partitions"],
                     replication_factor=t.get("replication", 1),
-                    config=t.get("config", {}),
+                    config={k: str(v) for k, v in t.get("config", {}).items()},
                 ))
-        else:
-            current_parts = len(existing[name].partitions)
-            if current_parts != t["partitions"]:
-                LOG.warning("PARTITION DRIFT: %s has %d, expected %d",
-                            name, current_parts, t["partitions"])
-                drift += 1
 
     if to_create:
-        for name, fut in admin.create_topics(to_create).items():
+        futures = admin.create_topics(to_create)
+        for name, fut in futures.items():
             try:
                 fut.result()
                 LOG.info("created %s", name)
             except Exception as exc:
                 LOG.error("failed to create %s: %s", name, exc)
-                drift += 1
+                errors += 1
 
-    if args.check and drift:
+    if errors:
+        LOG.error("%d error(s)", errors)
         return 1
+    LOG.info("all topics OK")
     return 0
 
 

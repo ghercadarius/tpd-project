@@ -8,8 +8,10 @@ detection:
     ewma_alpha: 0.3
     spike_k: 3.0
     # Guardrails to suppress false positives.
-    min_volume: 25
-    neg_ratio_threshold: 0.45
+    # Lower min_volume (5) makes the detector fire during small replay tests;
+    # raise it (e.g. 50) for a production stream with higher throughput.
+    min_volume: 5
+    neg_ratio_threshold: 0.35
     cooldown_minutes: 15
   per_brand:
-    # acme: { spike_k: 2.5, min_volume: 50 }
+    # apple: { spike_k: 2.5, min_volume: 50 }

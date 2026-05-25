@@ -1,16 +1,14 @@
-"""Stateful spike detector for per-brand negative-sentiment aggregates.
+"""Stateful per-brand spike detector using an EWMA z-score.
 
-Input:  per-window aggregate dicts keyed by brand.
-State:  EWMA of `neg_count` (mean+variance) + last-alert timestamp (cooldown).
-Output: alert dicts when current `neg_count` exceeds mean + k * stdev AND
-        guardrails (min_volume, neg_ratio_threshold) are met AND we're past cooldown.
+Input:  JSON-serialised aggregate dicts (from BrandWindowAgg), keyed by brand.
+State:  EWMA mean+variance of neg_count, last-alert timestamp for cooldown.
+Output: JSON alert dicts when a spike is detected and guardrails are met.
 """
 from __future__ import annotations
 
 import json
 import logging
 import math
-import time
 
 from pyflink.common import Types
 from pyflink.datastream.functions import KeyedProcessFunction
@@ -30,7 +28,7 @@ def _severity(z: float) -> str:
 
 
 class SpikeDetector(KeyedProcessFunction):
-    """Detect negative-sentiment spikes per brand using an EWMA z-score."""
+    """Emit an alert when neg_count exceeds mean + k*stdev and guardrails pass."""
 
     def __init__(self,
                  alpha: float = 0.3,
@@ -51,25 +49,28 @@ class SpikeDetector(KeyedProcessFunction):
             ValueStateDescriptor("ewma_stats", Types.PICKLED_BYTE_ARRAY())
         )
         self._last_alert = ctx.get_state(
-            ValueStateDescriptor("last_alert_ts", Types.LONG())
+            ValueStateDescriptor("last_alert_ms", Types.LONG())
         )
 
     def process_element(self, value, ctx):
-        agg = json.loads(value) if isinstance(value, (str, bytes)) else value
-        brand = agg["brand"]
+        try:
+            agg = json.loads(value) if isinstance(value, (str, bytes)) else value
+        except Exception:
+            return
+
         neg_count = float(agg.get("neg_count", 0))
         volume = int(agg.get("volume", 0))
         neg_ratio = float(agg.get("neg_ratio", 0.0))
 
+        # Load prior EWMA state.
         stats = self._stats.value() or {"mean": 0.0, "var": 0.0, "n": 0}
-        n = stats["n"]
-        mean, var = stats["mean"], stats["var"]
+        n, mean, var = stats["n"], stats["mean"], stats["var"]
 
-        # Decision uses the *prior* statistics so the current point can spike.
+        # Compute z-score against prior distribution (need ≥5 windows to warm up).
         std = math.sqrt(var) if var > 0 else 0.0
         z = (neg_count - mean) / std if (std > 1e-6 and n >= 5) else 0.0
 
-        # Update EWMA after computing z.
+        # Update EWMA after computing z so the current point can spike.
         if n == 0:
             new_mean, new_var = neg_count, 0.0
         else:
@@ -78,24 +79,27 @@ class SpikeDetector(KeyedProcessFunction):
             new_var = (1 - self.alpha) * (var + self.alpha * diff * diff)
         self._stats.update({"mean": new_mean, "var": new_var, "n": n + 1})
 
-        if (volume >= self.min_volume
-                and neg_ratio >= self.neg_ratio_threshold
-                and z >= self.spike_k):
-            now_ms = ctx.timer_service().current_processing_time()
-            last = self._last_alert.value() or 0
-            if now_ms - last < self.cooldown_seconds * 1000:
-                return
-            self._last_alert.update(now_ms)
-            alert = {
-                "brand": brand,
-                "triggered_at": now_ms / 1000.0,
-                "window_start": agg["window_start"],
-                "window_end": agg["window_end"],
-                "z_score": float(z),
-                "neg_ratio": neg_ratio,
-                "volume": volume,
-                "severity": _severity(z),
-                "sample_text": agg.get("sample_text"),
-            }
-            LOG.info("ALERT %s z=%.2f vol=%d neg_ratio=%.2f", brand, z, volume, neg_ratio)
-            yield json.dumps(alert)
+        # Guardrails.
+        if volume < self.min_volume or neg_ratio < self.neg_ratio_threshold or z < self.spike_k:
+            return
+
+        # Cooldown check.
+        now_ms = ctx.timer_service().current_processing_time()
+        last_ms = self._last_alert.value() or 0
+        if (now_ms - last_ms) < self.cooldown_seconds * 1000:
+            return
+
+        self._last_alert.update(now_ms)
+        alert = {
+            "brand": agg["brand"],
+            "triggered_at": now_ms / 1000.0,
+            "window_start": agg["window_start"],
+            "window_end": agg["window_end"],
+            "z_score": round(z, 4),
+            "neg_ratio": round(neg_ratio, 4),
+            "volume": volume,
+            "severity": _severity(z),
+            "sample_text": agg.get("sample_text"),
+        }
+        LOG.info("ALERT brand=%s z=%.2f vol=%d neg_ratio=%.2f", agg["brand"], z, volume, neg_ratio)
+        yield json.dumps(alert)

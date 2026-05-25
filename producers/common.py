@@ -34,7 +34,6 @@ def match_brand(text: str, brands: list[Brand]) -> str | None:
     t = text.lower()
     for brand in brands:
         for kw in brand.keywords:
-            # Word-boundary match avoids substring false positives.
             if re.search(rf"\b{re.escape(kw)}\b", t):
                 return brand.name
     return None

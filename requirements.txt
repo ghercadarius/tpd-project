@@ -1,22 +1,20 @@
 # --- Streaming & messaging ---
 apache-flink==1.18.1
 confluent-kafka==2.4.0
-kafka-python==2.0.2
 
 # --- Reddit ingest ---
 praw==7.7.1
-zstandard==0.22.0          # for Pushshift .zst dumps
+zstandard==0.22.0
 
-# --- Pretrained model export / runtime support ---
-torch>=2.2.0
-transformers==4.41.2
-scikit-learn==1.4.2
-pandas==2.2.2
+# --- Sentiment (primary: VADER; optional: ONNX) ---
+nltk==3.8.2
 
-# --- Inference (CPU, used inside Flink) ---
-onnx==1.16.1
+# Optional ONNX upgrade (run scripts/export_model.py first):
+# torch>=2.2.0
+# transformers==4.41.2
+# optimum==1.20.0
+# onnx==1.16.1
 onnxruntime==1.18.0
-optimum==1.20.0            # HF -> ONNX export helper
 
 # --- Dashboard ---
 fastapi==0.111.0
@@ -27,12 +25,10 @@ psycopg[binary]==3.1.19
 SQLAlchemy==2.0.30
 
 # --- Utilities ---
-pydantic==2.7.1
 python-dotenv==1.0.1
 PyYAML==6.0.1
-tqdm==4.66.4
 requests==2.32.3
+pandas==2.2.2
 
 # --- Testing ---
 pytest==8.2.1
-pytest-asyncio==0.23.7

@@ -24,37 +24,55 @@ Streamlit/FastAPI dashboard.
 
 See [docs/architecture.md](docs/architecture.md) for the full design.
 
-## Quickstart (5 minutes, macOS replay mode)
+## Quickstart (x86 Linux)
 
-Install Docker Desktop and Python 3 first. The bash scripts auto-detect `.venv/bin/python`
-when available and otherwise fall back to `python3`.
+**Prerequisites:** Docker, Python 3.10 or 3.11 (PyFlink requires ≤ 3.11), Java 11+.
 
 ```bash
-# 1. Install Python deps & bootstrap .env
-bash scripts/setup.sh
+# 1. Create a virtual environment with the right Python version
+python3.11 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 
-# 2. Bring up Kafka + Flink + Postgres and create topics
-bash scripts/start_infra.sh
+# 2. Copy and fill in the environment file
+cp .env.example .env      # edit if needed; defaults work for local Docker
 
-# 3. Materialize the pretrained sentiment artifacts
-python3 scripts/export_model.py
+# 3. Bring up Kafka + Postgres
+docker compose -f infra/docker-compose.yml up -d --wait
 
-# 3b. (Optional) Rebuild the experimental dataset / eval gate
-python3 scripts/prepare_dataset.py
-python3 scripts/eval_model.py
+# 4. Create Kafka topics
+python scripts/init_kafka.py
 
-# 4. Start producers in replay mode using a small sample dump
-bash scripts/start_producers.sh --mode replay --file data/pushshift/sample.ndjson
+# 5. Start the Flink job (local mini-cluster inside the Python process)
+python -m flink_jobs.brand_crisis_job &
 
-# 5. Submit the Flink job
-bash scripts/submit_flink_job.sh
+# 6. Start the Postgres sink consumer
+python -m dashboard.sink_consumer &
 
-# 6. Open the dashboard
-bash scripts/start_dashboard.sh
+# 7. Replay your .zst dump into Kafka
+python -m producers.pushshift_replay --file /path/to/dump.zst --rate max
+
+# 8. Start the API + dashboard
+uvicorn dashboard.api:app --port 8000 &
+streamlit run dashboard/app.py --server.port 8501
 # -> http://localhost:8501
 ```
 
-For a one-shot orchestration, use `bash scripts/run_all.sh`.
+One-shot orchestration (steps 3–8 in one command):
+```bash
+FILE=/path/to/dump.zst bash scripts/run_all.sh
+```
+
+### Optional: ONNX sentiment model (better accuracy)
+
+By default the pipeline uses VADER (no download needed).
+To upgrade to the pretrained Twitter-RoBERTa model:
+```bash
+pip install torch transformers optimum
+python scripts/export_model.py          # downloads + exports ~500 MB model
+# then set in .env:
+SENTIMENT_BACKEND=onnx
+```
 
 ## Repository layout
 

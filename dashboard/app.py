@@ -1,8 +1,8 @@
-"""Streamlit dashboard for brand crisis monitoring."""
+"""Streamlit dashboard — Brand Crisis Monitor."""
 from __future__ import annotations
 
 import os
-from datetime import datetime
+import time
 
 import pandas as pd
 import requests
@@ -14,6 +14,10 @@ st.set_page_config(page_title="Brand Crisis Monitor", layout="wide")
 st.title("Reddit Brand Crisis Monitor")
 
 
+# ---------------------------------------------------------------------------
+# Data fetchers (cached per TTL)
+# ---------------------------------------------------------------------------
+
 @st.cache_data(ttl=15)
 def _brands() -> list[str]:
     try:
@@ -24,69 +28,100 @@ def _brands() -> list[str]:
 
 @st.cache_data(ttl=15)
 def _aggregates(brand: str, minutes: int) -> pd.DataFrame:
-    r = requests.get(f"{API}/aggregates", params={"brand": brand, "minutes": minutes}, timeout=10)
-    r.raise_for_status()
-    df = pd.DataFrame(r.json())
-    if not df.empty:
-        df["window_start"] = pd.to_datetime(df["window_start"])
-    return df
+    try:
+        r = requests.get(f"{API}/aggregates", params={"brand": brand, "minutes": minutes}, timeout=10)
+        r.raise_for_status()
+        df = pd.DataFrame(r.json())
+        if not df.empty:
+            df["window_start"] = pd.to_datetime(df["window_start"], utc=True)
+        return df
+    except Exception as exc:
+        st.error(f"Could not load aggregates: {exc}")
+        return pd.DataFrame()
 
 
 @st.cache_data(ttl=10)
 def _alerts(active: bool) -> pd.DataFrame:
-    r = requests.get(f"{API}/alerts", params={"active": str(active).lower(), "limit": 50}, timeout=10)
-    r.raise_for_status()
-    df = pd.DataFrame(r.json())
-    if not df.empty:
-        df["triggered_at"] = pd.to_datetime(df["triggered_at"])
-    return df
+    try:
+        r = requests.get(f"{API}/alerts", params={"active": str(active).lower(), "limit": 50}, timeout=10)
+        r.raise_for_status()
+        df = pd.DataFrame(r.json())
+        if not df.empty:
+            df["triggered_at"] = pd.to_datetime(df["triggered_at"], utc=True)
+        return df
+    except Exception as exc:
+        st.error(f"Could not load alerts: {exc}")
+        return pd.DataFrame()
 
 
-# --- Sidebar -------------------------------------------------------------- #
+# ---------------------------------------------------------------------------
+# Sidebar
+# ---------------------------------------------------------------------------
+
 st.sidebar.header("Controls")
 all_brands = _brands()
-brand = st.sidebar.selectbox("Brand", all_brands or ["(none)"])
-window = st.sidebar.slider("Lookback (minutes)", 15, 24 * 60, 120, step=15)
-auto_refresh = st.sidebar.checkbox("Auto-refresh (every 15s)", value=True)
-if auto_refresh:
-    st.sidebar.caption("Page reruns automatically.")
-    st.experimental_set_query_params(t=int(datetime.utcnow().timestamp()) // 15)
+brand = st.sidebar.selectbox("Brand", all_brands if all_brands else ["(none)"])
+window = st.sidebar.slider("Lookback (minutes)", min_value=15, max_value=1440, value=120, step=15)
+auto_refresh = st.sidebar.toggle("Auto-refresh (15 s)", value=True)
 
-# --- Active alerts -------------------------------------------------------- #
+if auto_refresh:
+    time.sleep(0)  # yield to Streamlit; rerun triggered by st.rerun below
+
+# ---------------------------------------------------------------------------
+# Active alerts
+# ---------------------------------------------------------------------------
+
 st.subheader("Active alerts (last hour)")
 adf = _alerts(active=True)
 if adf.empty:
     st.info("No active alerts.")
 else:
-    severity_color = {"low": "🟡", "medium": "🟠", "high": "🔴", "critical": "🚨"}
+    _SEVERITY_ICON = {"low": "🟡", "medium": "🟠", "high": "🔴", "critical": "🚨"}
     for _, row in adf.head(10).iterrows():
-        emoji = severity_color.get(row["severity"], "⚠️")
+        icon = _SEVERITY_ICON.get(row["severity"], "⚠️")
         st.markdown(
-            f"{emoji} **{row['brand']}** — z={row['z_score']:.2f}, "
+            f"{icon} **{row['brand']}** — z={row['z_score']:.2f}, "
             f"neg_ratio={row['neg_ratio']:.2f}, volume={row['volume']} "
-            f"@ {row['triggered_at']:%Y-%m-%d %H:%M:%S}"
+            f"@ {row['triggered_at']}"
         )
         if row.get("sample_text"):
             st.caption(row["sample_text"])
 
-# --- Trends --------------------------------------------------------------- #
+# ---------------------------------------------------------------------------
+# Brand trend charts
+# ---------------------------------------------------------------------------
+
 st.subheader(f"Trend for `{brand}`")
 if not all_brands:
-    st.warning("No brand data yet. Start the producers and Flink job.")
+    st.warning("No data yet — start the producer and Flink job first.")
 else:
     df = _aggregates(brand, window)
     if df.empty:
-        st.info("No aggregates yet for this brand and window.")
+        st.info("No aggregates for this brand/window yet.")
     else:
-        c1, c2 = st.columns(2)
-        with c1:
-            st.line_chart(df.set_index("window_start")[["volume", "neg_count"]])
-        with c2:
-            st.line_chart(df.set_index("window_start")[["neg_ratio", "avg_neg_prob"]])
-        st.caption(f"{len(df)} aggregate windows over the last {window} min.")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.line_chart(df.set_index("window_start")[["volume", "neg_count"]],
+                          use_container_width=True)
+        with col2:
+            st.line_chart(df.set_index("window_start")[["neg_ratio", "avg_neg_prob"]],
+                          use_container_width=True)
+        st.caption(f"{len(df)} windows over the last {window} minutes.")
 
-# --- Recent alerts table -------------------------------------------------- #
+# ---------------------------------------------------------------------------
+# All-brand alert table
+# ---------------------------------------------------------------------------
+
 st.subheader("Recent alerts (all brands)")
 recent = _alerts(active=False)
 if not recent.empty:
-    st.dataframe(recent, use_container_width=True, hide_index=True)
+    st.dataframe(
+        recent[["triggered_at", "brand", "severity", "z_score", "neg_ratio", "volume", "sample_text"]],
+        use_container_width=True,
+        hide_index=True,
+    )
+
+# Auto-refresh: trigger a rerun after 15 s.
+if auto_refresh:
+    time.sleep(15)
+    st.rerun()

@@ -14,6 +14,8 @@ DEFAULT_MODEL_ID = os.environ.get(
     "cardiffnlp/twitter-roberta-base-sentiment-latest",
 )
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
 
 def export(model_id: str, out_dir: Path) -> None:
     from optimum.onnxruntime import ORTModelForSequenceClassification
@@ -51,9 +53,15 @@ def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--model-id", default=DEFAULT_MODEL_ID,
                    help="Hugging Face checkpoint to export (default: pretrained sentiment model).")
-    p.add_argument("--out-dir", type=Path, default=Path("model/artifacts"))
+    p.add_argument(
+        "--out-dir",
+        type=Path,
+        default=REPO_ROOT / "model" / "artifacts",
+        help="Directory for ONNX artifacts (default: <repo>/model/artifacts).",
+    )
     args = p.parse_args()
-    export(args.model_id, args.out_dir)
+    out_dir = args.out_dir if args.out_dir.is_absolute() else (REPO_ROOT / args.out_dir)
+    export(args.model_id, out_dir)
 
 
 if __name__ == "__main__":

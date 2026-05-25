@@ -20,6 +20,6 @@ Write-Host "[infra] init topics"
 python scripts/init_kafka.py
 
 Write-Host "[infra] OK"
-Write-Host "  Kafka UI : http://localhost:8080"
+Write-Host "  Kafka UI : http://localhost:18080"
 Write-Host "  Flink UI : http://localhost:8081"
 Write-Host "  Postgres : localhost:5432 (brand/brand)"

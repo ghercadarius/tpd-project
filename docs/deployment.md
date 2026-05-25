@@ -8,7 +8,7 @@ The reference deployment runs entirely on a single host via
 | Service | Port | Notes |
 |---|---|---|
 | Kafka (KRaft) | 19092 (host) / 9092 (internal) | Auto-create disabled; topics are created by `init_kafka.py`. |
-| Kafka UI | 8080 | Provectus Kafka UI. |
+| Kafka UI | 18080 | Provectus Kafka UI. |
 | Flink JobManager | 8081 | Web UI; checkpoints volume mounted. |
 | Flink TaskManagers | — | 2 replicas × 4 slots = 8 parallel slots. |
 | Postgres | 5432 | Init SQL creates `aggregates_5m`, `alerts`. |

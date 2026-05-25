@@ -24,6 +24,6 @@ echo "[infra] init topics"
 "$PYTHON" scripts/init_kafka.py
 
 echo "[infra] OK"
-echo "  Kafka UI : http://localhost:8080"
+echo "  Kafka UI : http://localhost:18080"
 echo "  Flink UI : http://localhost:8081"
 echo "  Postgres : localhost:5432 (brand/brand)"

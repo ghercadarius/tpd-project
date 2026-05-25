@@ -60,7 +60,7 @@ def iter_records(path: Path) -> Iterator[dict]:
 
     if suffixes[-1:] == [".zst"]:
         import zstandard as zstd
-        dctx = zstd.ZstdDecompressor()
+        dctx = zstd.ZstdDecompressor(max_window_size=2**31)
         with path.open("rb") as fh, dctx.stream_reader(fh, closefd=False) as reader:
             text_stream = io.TextIOWrapper(reader, encoding="utf-8", errors="replace")
             for line in text_stream:

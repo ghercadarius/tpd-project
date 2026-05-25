@@ -20,6 +20,12 @@ services:
       KAFKA_LOG_RETENTION_HOURS: 168
       KAFKA_LOG_SEGMENT_BYTES: 134217728
       CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1"]
+      start_period: 60s
+      interval: 10s
+      timeout: 5s
+      retries: 15
 
   kafka-ui:
     image: provectuslabs/kafka-ui:latest

@@ -7,7 +7,7 @@ praw==7.7.1
 zstandard==0.22.0
 
 # --- Sentiment (primary: VADER; optional: ONNX) ---
-nltk==3.8.2
+nltk==3.9.1
 
 # Optional ONNX upgrade (run scripts/export_model.py first):
 # torch>=2.2.0

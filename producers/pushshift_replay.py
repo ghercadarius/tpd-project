@@ -61,8 +61,9 @@ def iter_records(path: Path) -> Iterator[dict]:
     if suffixes[-1:] == [".zst"]:
         import zstandard as zstd
         dctx = zstd.ZstdDecompressor(max_window_size=2**31)
-        with path.open("rb") as fh, dctx.stream_reader(fh, closefd=False) as reader:
-            text_stream = io.TextIOWrapper(reader, encoding="utf-8", errors="replace")
+        with path.open("rb") as fh, dctx.stream_reader(fh, read_size=1 << 20, closefd=False) as reader:
+            buffered = io.BufferedReader(reader, buffer_size=1 << 20)
+            text_stream = io.TextIOWrapper(buffered, encoding="utf-8", errors="replace")
             for line in text_stream:
                 line = line.strip()
                 if line:

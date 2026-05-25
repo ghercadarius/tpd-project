@@ -9,9 +9,10 @@ Pipeline:
   6. SpikeDetector (KeyedProcessFunction) → reddit.alerts
 
 Run locally:
+    python scripts/download_jars.py   # once
     python -m flink_jobs.brand_crisis_job
 
-Requirements: apache-flink==1.18.1, Python 3.8–3.11, Java 11+
+Requirements: apache-flink==1.19.1, Python 3.8–3.11, Java 11+
 """
 from __future__ import annotations
 
@@ -198,6 +199,20 @@ def _sink(topic: str, bootstrap: str) -> KafkaSink:
 # Job
 # ---------------------------------------------------------------------------
 
+def _add_kafka_jar(env: StreamExecutionEnvironment) -> None:
+    """Register the Kafka connector fat-jar so KafkaSource/KafkaSink can be resolved."""
+    jar_dir = Path(__file__).parent / "jars"
+    jars = list(jar_dir.glob("flink-sql-connector-kafka-*.jar"))
+    if not jars:
+        raise FileNotFoundError(
+            f"Kafka connector JAR not found in {jar_dir}. "
+            "Run:  python scripts/download_jars.py"
+        )
+    jar_uri = jars[0].resolve().as_uri()
+    env.add_jars(jar_uri)
+    LOG.info("loaded JAR: %s", jar_uri)
+
+
 def build_job(env: StreamExecutionEnvironment) -> None:
     cfg = _load_detection_cfg()
     bootstrap = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:19092")
@@ -206,6 +221,7 @@ def build_job(env: StreamExecutionEnvironment) -> None:
     win_m = int(cfg.get("window_size_minutes", 5))
     slide_m = int(cfg.get("window_slide_minutes", 1))
 
+    _add_kafka_jar(env)
     env.set_parallelism(int(os.environ.get("FLINK_PARALLELISM", "2")))
     env.enable_checkpointing(30_000, CheckpointingMode.EXACTLY_ONCE)
 

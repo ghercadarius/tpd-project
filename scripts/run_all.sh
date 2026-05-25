@@ -26,6 +26,9 @@ done
 echo "==> Creating Kafka topics …"
 "$PYTHON" scripts/init_kafka.py
 
+echo "==> Downloading Flink connector JARs (skipped if already present) …"
+"$PYTHON" scripts/download_jars.py
+
 echo "==> Starting Postgres sink consumer …"
 "$PYTHON" -m dashboard.sink_consumer &
 SINK_PID=$!

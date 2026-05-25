@@ -60,6 +60,16 @@ def _load_detection_cfg() -> dict:
     return {}
 
 
+def _brand_key(value: str) -> str:
+    """Best-effort key extractor that never raises inside Python workers."""
+    try:
+        rec = json.loads(value) if isinstance(value, (str, bytes)) else value
+        brand = rec.get("brand", "_") if isinstance(rec, dict) else "_"
+        return str(brand or "_")
+    except Exception:
+        return "_"
+
+
 # ---------------------------------------------------------------------------
 # Watermark
 # ---------------------------------------------------------------------------
@@ -103,8 +113,20 @@ class SentimentMap(MapFunction):
     _scorer = None
 
     def open(self, ctx):
-        from model.inference import get_scorer
-        self._scorer = get_scorer()
+        try:
+            from model.inference import get_scorer
+            self._scorer = get_scorer()
+        except Exception as e:
+            LOG.exception("sentiment scorer init failed; falling back to neutral scoring: %s", e)
+
+            class _NeutralScorer:
+                def score(self, _text: str):
+                    class _S:
+                        label = "neu"
+                        neg_prob = 0.0
+                    return _S()
+
+            self._scorer = _NeutralScorer()
 
     def map(self, value: str):
         if not value:
@@ -260,7 +282,7 @@ def build_job(env: StreamExecutionEnvironment) -> None:
 
     aggregates = (
         scored
-        .key_by(lambda v: json.loads(v).get("brand", "_"), key_type=Types.STRING())
+        .key_by(_brand_key, key_type=Types.STRING())
         .window(SlidingEventTimeWindows.of(Time.minutes(win_m), Time.minutes(slide_m)))
         .process(BrandWindowAgg(), output_type=Types.STRING())
         .name("aggregate")
@@ -278,7 +300,7 @@ def build_job(env: StreamExecutionEnvironment) -> None:
     )
     alerts = (
         aggregates
-        .key_by(lambda v: json.loads(v).get("brand", "_"), key_type=Types.STRING())
+        .key_by(_brand_key, key_type=Types.STRING())
         .process(detector, output_type=Types.STRING())
         .name("spike-detector")
     )

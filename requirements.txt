@@ -1,5 +1,5 @@
 # --- Streaming & messaging ---
-apache-flink==1.18.1
+apache-flink==1.19.1
 confluent-kafka==2.4.0
 
 # --- Reddit ingest ---
